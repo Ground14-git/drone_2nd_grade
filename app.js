@@ -1,6 +1,46 @@
 // App State
+// Active question set selection (1: 第1セット簡単, 2: 第2セット標準, 3: 第3セット標準)
+let selectedSetId = 1;
+
+// Set metadata dictionary for preview info
+const setMetaInfo = {
+  1: {
+    badge: "第1回",
+    title: "第1セット（簡単・基礎）",
+    desc: "全50問・重要用語・定義・基本ルールの総点検"
+  },
+  2: {
+    badge: "第2回",
+    title: "第2セット（標準難度）",
+    desc: "全50問・教則第5版準拠（法規・機体システム・気象・CRM網羅）"
+  },
+  3: {
+    badge: "第3回",
+    title: "第3セット（標準難度）",
+    desc: "全50問・教則第5版準拠（捜索特例・気象・運航リスク・CRM網羅）"
+  },
+  4: {
+    badge: "第4回",
+    title: "第4セット（標準難度）",
+    desc: "全50問・教則第5版準拠（河川港湾法規・PID制御・フェールセーフ・気象応用）"
+  }
+};
+
+function getSetQuestions(setId) {
+  if (setId === 4 && typeof questionsSet4 !== "undefined") {
+    return questionsSet4;
+  }
+  if (setId === 3 && typeof questionsSet3 !== "undefined") {
+    return questionsSet3;
+  }
+  if (setId === 2 && typeof questionsSet2 !== "undefined") {
+    return questionsSet2;
+  }
+  return typeof questionsSet1 !== "undefined" ? questionsSet1 : questionsData;
+}
+
 // activeQuestions contains the array of questions currently being worked on (all 50 or filtered mistakes)
-let activeQuestions = [...questionsData];
+let activeQuestions = [...getSetQuestions(selectedSetId)];
 let currentIndex = 0;
 // userAnswers map keyed by question id:
 // userAnswers[qId] = { selectedOptionIndex: number, isCorrect: boolean }
@@ -368,7 +408,7 @@ function showStartScreen() {
   if (appFooter) appFooter.style.display = "none";
   if (timeupModal) timeupModal.classList.remove("active");
 
-  activeQuestions = [...questionsData];
+  activeQuestions = [...getSetQuestions(selectedSetId)];
   currentIndex = 0;
   totalQText.textContent = activeQuestions.length;
   updateScoreAndProgress();
@@ -407,6 +447,36 @@ function executeWithTransition(onPeakCallback) {
   }, 280);
 }
 
+// Setup Set Selection Dropdown
+function setupSetSelection() {
+  const setDropdown = document.getElementById("exam-set-select");
+  const detailBadge = document.getElementById("set-detail-badge");
+  const detailTitle = document.getElementById("set-detail-title");
+  const detailDesc = document.getElementById("set-detail-desc");
+
+  function updateSetPreview(setId) {
+    const meta = setMetaInfo[setId] || {
+      badge: `第${setId}回`,
+      title: `第${setId}セット`,
+      desc: "全50問・教則第5版準拠"
+    };
+    if (detailBadge) detailBadge.textContent = meta.badge;
+    if (detailTitle) detailTitle.textContent = meta.title;
+    if (detailDesc) detailDesc.textContent = meta.desc;
+  }
+
+  if (setDropdown) {
+    // Sync initial state
+    setDropdown.value = String(selectedSetId);
+    updateSetPreview(selectedSetId);
+
+    setDropdown.addEventListener("change", (e) => {
+      selectedSetId = parseInt(e.target.value, 10) || 1;
+      updateSetPreview(selectedSetId);
+    });
+  }
+}
+
 // Start Exam Button Click Handler with cool upward wipe transition
 if (btnStartExam) {
   btnStartExam.addEventListener("click", () => {
@@ -418,7 +488,8 @@ if (btnStartExam) {
       }
       if (appFooter) appFooter.style.display = "flex";
 
-      initApp(questionsData, true);
+      const chosenQuestions = getSetQuestions(selectedSetId);
+      initApp(chosenQuestions, true);
     });
   });
 }
@@ -468,5 +539,6 @@ if (btnClose) {
 
 // Start app on load - Show Cover Page First
 document.addEventListener("DOMContentLoaded", () => {
+  setupSetSelection();
   showStartScreen();
 });
