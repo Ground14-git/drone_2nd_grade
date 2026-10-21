@@ -106,8 +106,34 @@
           </div>
         </div>
 
+        <!-- Exam Set Selection (Dropdown format) -->
+        <div class="set-select-section">
+          <label for="exam-set-select" class="set-select-label">挑戦する模試セットを選択</label>
+          <div class="set-select-wrapper">
+            <select id="exam-set-select" class="set-dropdown" aria-label="模試セットの選択">
+              <option value="1" selected>第1セット（簡単・基礎 50問）</option>
+              <option value="2">第2セット（標準難度 50問）</option>
+              <option value="3">第3セット（標準難度 50問）</option>
+              <option value="4">第4セット（標準難度 50問）</option>
+            </select>
+            <div class="select-arrow">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+          </div>
+          <!-- Selected Set Detail Preview Card -->
+          <div class="set-detail-card" id="set-detail-card">
+            <div class="set-detail-badge" id="set-detail-badge">第1回</div>
+            <div class="set-detail-info">
+              <div class="set-detail-title" id="set-detail-title">第1セット（簡単・基礎）</div>
+              <div class="set-detail-desc" id="set-detail-desc">全50問・重要用語・定義・基本ルールの総点検</div>
+            </div>
+          </div>
+        </div>
+
         <div class="start-notice">
-          <p>「スタート」ボタンを押すと、第1問の表示と同時に30分の試験タイマーが開始されます。<br>落ち着いて1問ずつ解答していきましょう。</p>
+          <p>「スタート」ボタンを押すと、選択したセットの第1問が表示され30分の試験タイマーが開始されます。<br>落ち着いて1問ずつ解答していきましょう。</p>
         </div>
 
         <button class="btn btn-primary btn-start" id="btn-start-exam">試験をスタートする</button>
