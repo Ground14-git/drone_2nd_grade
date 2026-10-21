@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>無人航空機操縦士（2等）学科試験 予想問題（第5版対応版）</title>
+  <meta name="description" content="無人航空機操縦士2等の学科試験合格を目指すための50問予想問題集Webアプリです。">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Header -->
+    <header class="app-header">
+      <div class="header-top">
+        <h1 class="app-title">無人航空機操縦士（2等） 学科試験 予想問題（第5版対応版）</h1>
+        <div class="header-actions">
+          <!-- Timer Display -->
+          <div class="timer-badge" id="timer-badge" title="残り時間">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            <span id="timer-display">30:00</span>
+          </div>
+          <button class="icon-btn" id="btn-share" aria-label="シェア" title="シェア">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="18" cy="5" r="3"></circle>
+              <circle cx="6" cy="12" r="3"></circle>
+              <circle cx="18" cy="19" r="3"></circle>
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+            </svg>
+          </button>
+          <button class="icon-btn" id="btn-close" aria-label="リセット" title="リセット">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Progress & Score Bar -->
+      <div class="progress-row">
+        <div class="progress-track">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <div class="q-counter">
+          <span id="q-index">1</span>/<span id="total-q">50</span>
+        </div>
+        <div class="score-badges">
+          <span class="badge wrong" title="不正解数">✕ <span id="wrong-count">0</span></span>
+          <span class="badge correct" title="正解数">✓ <span id="correct-count">0</span></span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Time Up Modal -->
+    <div class="modal-overlay" id="timeup-modal">
+      <div class="modal-card">
+        <div class="modal-icon">⏰</div>
+        <h3 class="modal-title">試験時間（30分）が経過しました！</h3>
+        <p class="modal-desc">本番の学科試験と同じ30分が経過しました。<br>このまま現在の結果を確認しますか？それとも最後まで解答を続けますか？</p>
+        <div class="modal-buttons">
+          <button class="btn btn-primary" id="btn-timeup-result">結果を見る</button>
+          <button class="btn btn-secondary" id="btn-timeup-continue">このまま続ける</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Start Screen Cover -->
+    <section class="start-container" id="start-view">
+      <div class="start-card">
+        <div class="start-badge">無人航空機操縦士 国家試験対策</div>
+        <h2 class="start-title">二等 学科試験 予想問題集<br><span class="start-subtitle">（第5版 教則対応）</span></h2>
+        
+        <div class="start-instruction">
+          <div class="info-row">
+            <div class="info-icon">⏱️</div>
+            <div class="info-text">
+              <strong>制限時間：30分</strong>
+              <span>本番同様の30分カウントダウン機能付き</span>
+            </div>
+          </div>
+          <div class="info-row">
+            <div class="info-icon">📝</div>
+            <div class="info-text">
+              <strong>出題数：全50問</strong>
+              <span>三肢択一式（3つの選択肢から正解を1つ選択）</span>
+            </div>
+          </div>
+          <div class="info-row">
+            <div class="info-icon">🎯</div>
+            <div class="info-text">
+              <strong>合格基準：正答率80%以上</strong>
+              <span>40問以上の正解で合格ライン達成</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="start-notice">
+          <p>「スタート」ボタンを押すと、第1問の表示と同時に30分の試験タイマーが開始されます。<br>落ち着いて1問ずつ解答していきましょう。</p>
+        </div>
+
+        <button class="btn btn-primary btn-start" id="btn-start-exam">試験をスタートする</button>
+      </div>
+    </section>
+
+    <!-- Quiz Question Content -->
+    <main class="quiz-content" id="quiz-view" style="display: none;">
+      <div class="q-header">
+        <div class="q-num" id="q-num">問題1</div>
+      </div>
+      <div class="q-body" id="q-body">
+        問題文が読み込まれます...
+      </div>
+      <div class="options-list" id="options-container">
+        <!-- Options rendered dynamically -->
+      </div>
+    </main>
+
+    <!-- Result Screen -->
+    <section class="result-container" id="result-view">
+      <div class="result-card">
+        <h2 class="result-title" id="result-title">試験結果</h2>
+        <div class="result-score" id="result-score">0 / 50問</div>
+        <p class="result-desc" id="result-desc">合格基準は正答率80%以上です。</p>
+      </div>
+      <div class="result-buttons">
+        <button class="btn btn-primary" id="btn-retry-mistakes">間違えた問題を解き直す</button>
+        <button class="btn btn-secondary" id="btn-restart">最初からやり直す</button>
+      </div>
+    </section>
+
+    <!-- Footer Navigation -->
+    <footer class="app-footer" style="display: none;">
+      <button class="btn btn-secondary" id="btn-prev" disabled>戻る</button>
+      <button class="btn btn-primary" id="btn-next">次へ</button>
+    </footer>
+  </div>
+
+  <!-- Scripts -->
+  <script src="questions.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
