@@ -351,8 +351,19 @@ function showStartScreen() {
   for (let key in userAnswers) delete userAnswers[key];
   everWrongQuestionIds.clear();
 
-  if (startView) startView.style.display = "block";
-  if (quizView) quizView.style.display = "none";
+  const shutterCurtain = document.getElementById("shutter-curtain");
+  if (shutterCurtain) {
+    shutterCurtain.classList.remove("wipe-cut");
+  }
+
+  if (startView) {
+    startView.classList.remove("transition-out");
+    startView.style.display = "flex";
+  }
+  if (quizView) {
+    quizView.classList.remove("slide-in-up");
+    quizView.style.display = "none";
+  }
   if (resultView) resultView.style.display = "none";
   if (appFooter) appFooter.style.display = "none";
   if (timeupModal) timeupModal.classList.remove("active");
@@ -363,20 +374,60 @@ function showStartScreen() {
   updateScoreAndProgress();
 }
 
-// Start Exam Button Click Handler
+// Smooth Screen Transition Helper (Upward shutter cut)
+let isTransitioning = false;
+function executeWithTransition(onPeakCallback) {
+  if (isTransitioning) return;
+  isTransitioning = true;
+
+  const shutterCurtain = document.getElementById("shutter-curtain");
+
+  // Add transition-out to currently visible containers
+  if (startView && startView.style.display !== "none") {
+    startView.classList.add("transition-out");
+  }
+  if (resultView && resultView.style.display !== "none") {
+    resultView.classList.add("transition-out");
+  }
+
+  // Trigger upward shutter wipe
+  if (shutterCurtain) {
+    shutterCurtain.classList.remove("wipe-cut");
+    void shutterCurtain.offsetWidth; // Force reflow
+    shutterCurtain.classList.add("wipe-cut");
+  }
+
+  // Execute screen switch and data init right as shutter reaches top coverage (280ms)
+  setTimeout(() => {
+    if (startView) startView.classList.remove("transition-out");
+    if (resultView) resultView.classList.remove("transition-out");
+
+    onPeakCallback();
+    isTransitioning = false;
+  }, 280);
+}
+
+// Start Exam Button Click Handler with cool upward wipe transition
 if (btnStartExam) {
   btnStartExam.addEventListener("click", () => {
-    if (startView) startView.style.display = "none";
-    if (quizView) quizView.style.display = "block";
-    if (appFooter) appFooter.style.display = "flex";
+    executeWithTransition(() => {
+      if (startView) startView.style.display = "none";
+      if (quizView) {
+        quizView.style.display = "block";
+        quizView.classList.add("slide-in-up");
+      }
+      if (appFooter) appFooter.style.display = "flex";
 
-    initApp(questionsData, true);
+      initApp(questionsData, true);
+    });
   });
 }
 
 // Restart entire quiz with all 50 questions
 btnRestart.addEventListener("click", () => {
-  showStartScreen();
+  executeWithTransition(() => {
+    showStartScreen();
+  });
 });
 
 // Retry ONLY mistaken questions from active set
@@ -394,13 +445,16 @@ btnRetryMistakes.addEventListener("click", () => {
     delete userAnswers[q.id];
   });
 
-  if (startView) startView.style.display = "none";
-  resultView.style.display = "none";
-  quizView.style.display = "block";
-  if (appFooter) appFooter.style.display = "flex";
+  executeWithTransition(() => {
+    if (startView) startView.style.display = "none";
+    resultView.style.display = "none";
+    quizView.style.display = "block";
+    quizView.classList.add("slide-in-up");
+    if (appFooter) appFooter.style.display = "flex";
 
-  // Re-initialize with ONLY the mistaken questions
-  initApp(wrongQuestions, false);
+    // Re-initialize with ONLY the mistaken questions
+    initApp(wrongQuestions, false);
+  });
 });
 
 // Header Reset Button (X mark)
