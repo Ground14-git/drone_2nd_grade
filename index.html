@@ -13,7 +13,7 @@
 
   <div class="app-container">
     <!-- Top Header -->
-    <header class="app-header">
+    <header class="app-header" style="display: none;">
       <div class="header-top">
         <h1 class="app-title">無人航空機操縦士（2等） 学科試験 予想問題（第5版対応版）</h1>
         <div class="header-actions">
@@ -106,6 +106,27 @@
           </div>
         </div>
 
+        <!-- Mode Selector (Real Exam vs Practice Mode) -->
+        <div class="mode-select-section">
+          <label class="mode-select-label">実施モードを選択</label>
+          <div class="mode-tabs">
+            <button type="button" class="mode-tab-btn active" data-mode="real" id="tab-mode-real">
+              <span class="mode-tab-icon">🔥</span>
+              <div class="mode-tab-content">
+                <span class="mode-tab-title">本番モード</span>
+                <span class="mode-tab-sub">正誤は最後に一括採点・保留＆見直し機能付き</span>
+              </div>
+            </button>
+            <button type="button" class="mode-tab-btn" data-mode="practice" id="tab-mode-practice">
+              <span class="mode-tab-icon">📖</span>
+              <div class="mode-tab-content">
+                <span class="mode-tab-title">練習モード</span>
+                <span class="mode-tab-sub">1問ごとに即時正誤判定＆詳細解説を表示</span>
+              </div>
+            </button>
+          </div>
+        </div>
+
         <!-- Exam Set Selection (Dropdown format) -->
         <div class="set-select-section">
           <label for="exam-set-select" class="set-select-label">挑戦する模試セットを選択</label>
@@ -134,8 +155,8 @@
           </div>
         </div>
 
-        <div class="start-notice">
-          <p>「スタート」ボタンを押すと、選択したセットの第1問が表示され30分の試験タイマーが開始されます。<br>落ち着いて1問ずつ解答していきましょう。</p>
+        <div class="start-notice" id="start-notice-desc">
+          <p>「試験をスタートする」を押すと、全50問の試験が開始されます。<br>本番モードでは正誤は表示されず、制限時間内に回答状況を確認・見直ししながら全問解いて最後に「採点」を行います。</p>
         </div>
 
         <button class="btn btn-primary btn-start" id="btn-start-exam">試験をスタートする</button>
@@ -145,7 +166,16 @@
     <!-- Quiz Question Content -->
     <main class="quiz-content" id="quiz-view" style="display: none;">
       <div class="q-header">
-        <div class="q-num" id="q-num">問題1</div>
+        <div class="q-num-row">
+          <div class="q-num" id="q-num">問題1</div>
+          <!-- Bookmark / Hold Button (後で見直す) -->
+          <button type="button" class="btn-bookmark" id="btn-bookmark" title="この問題を保留して後で見直す">
+            <svg class="bookmark-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+            </svg>
+            <span class="bookmark-label">後で見直す</span>
+          </button>
+        </div>
       </div>
       <div class="q-body" id="q-body">
         問題文が読み込まれます...
@@ -155,14 +185,86 @@
       </div>
     </main>
 
+    <!-- Answer Status / Review Modal (回答状況の確認) -->
+    <div class="modal-overlay" id="status-modal">
+      <div class="modal-card modal-large">
+        <div class="modal-header-row">
+          <h3 class="modal-title">回答状況の確認</h3>
+          <button type="button" class="icon-btn-close" id="btn-close-status" aria-label="閉じる">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Summary Statistics Chips -->
+        <div class="status-summary-bar">
+          <div class="status-stat answered">
+            <span class="stat-count" id="stat-answered-count">0</span>
+            <span class="stat-name">回答済み</span>
+          </div>
+          <div class="status-stat un-answered">
+            <span class="stat-count" id="stat-unanswered-count">50</span>
+            <span class="stat-name">未回答</span>
+          </div>
+          <div class="status-stat flagged">
+            <span class="stat-count" id="stat-flagged-count">0</span>
+            <span class="stat-name">後で見直す</span>
+          </div>
+        </div>
+
+        <!-- Quick Jump Banner for Flagged questions -->
+        <div class="status-quick-action" id="status-quick-action" style="display: none;">
+          <button type="button" class="btn-jump-flagged" id="btn-jump-next-flagged">
+            <span class="jump-icon">⭐</span>
+            <span class="jump-text">「後で見直す」問題を順に表示する</span>
+            <span class="jump-arrow">➔</span>
+          </button>
+        </div>
+
+        <div class="status-tip">各問題をタップすると、その問題へジャンプして解答・変更できます。</div>
+
+        <!-- Question List / Grid Container -->
+        <div class="question-list-container" id="question-grid">
+          <!-- Dynamically populated large item cards -->
+        </div>
+
+        <div class="modal-actions-bar">
+          <button class="btn btn-secondary" id="btn-back-to-quiz">問題に戻る</button>
+          <button class="btn btn-primary btn-grade-now" id="btn-modal-grade">採点する</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirm Submit / Grade Confirmation Modal -->
+    <div class="modal-overlay" id="confirm-grade-modal">
+      <div class="modal-card">
+        <div class="modal-icon">📝</div>
+        <h3 class="modal-title" id="confirm-grade-title">解答を終了して採点しますか？</h3>
+        <p class="modal-desc" id="confirm-grade-desc">採点を行うと、正解・不正解および詳細な解説が確認できます。<br>※一度採点すると解答の変更はできません。</p>
+        <div class="modal-buttons">
+          <button class="btn btn-accent" id="btn-do-grade">採点を実行する</button>
+          <button class="btn btn-secondary" id="btn-cancel-grade">まだ問題を解く</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Result Screen -->
     <section class="result-container" id="result-view">
-      <div class="result-card">
-        <h2 class="result-title" id="result-title">試験結果</h2>
-        <div class="result-score" id="result-score">0 / 50問</div>
-        <p class="result-desc" id="result-desc">合格基準は正答率80%以上です。</p>
+      <!-- Confetti Canvas Effect for Passing Celebration -->
+      <canvas id="confetti-canvas" class="confetti-canvas"></canvas>
+
+      <div class="result-card" id="result-card">
+        <div class="result-badge-anim" id="result-badge-anim">採点中...</div>
+        <h2 class="result-title" id="result-title">採点集計中...</h2>
+        <div class="result-score-wrapper">
+          <div class="result-score roll-active" id="result-score">-- / 50問</div>
+        </div>
+        <p class="result-desc" id="result-desc">採点結果を集計しています...</p>
       </div>
-      <div class="result-buttons">
+      <div class="result-buttons" id="result-buttons" style="opacity: 0; pointer-events: none; transition: opacity 0.4s ease;">
+        <button class="btn btn-primary" id="btn-review-all">全問題の解説と解答を見る</button>
         <button class="btn btn-primary" id="btn-retry-mistakes">間違えた問題を解き直す</button>
         <button class="btn btn-secondary" id="btn-restart">最初からやり直す</button>
       </div>
@@ -170,8 +272,22 @@
 
     <!-- Footer Navigation -->
     <footer class="app-footer" style="display: none;">
-      <button class="btn btn-secondary" id="btn-prev" disabled>戻る</button>
-      <button class="btn btn-primary" id="btn-next">次へ</button>
+      <div class="footer-left">
+        <button class="btn btn-secondary btn-icon-text" id="btn-open-status" title="回答状況の確認">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+          <span>回答状況</span>
+        </button>
+      </div>
+      <div class="footer-right">
+        <button class="btn btn-secondary" id="btn-prev" disabled>戻る</button>
+        <button class="btn btn-primary" id="btn-next">次へ</button>
+        <button class="btn btn-accent" id="btn-grade-footer" style="display: none;">採点する</button>
+      </div>
     </footer>
   </div>
 
