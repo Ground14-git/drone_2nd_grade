@@ -23,10 +23,26 @@ const setMetaInfo = {
     badge: "第4回",
     title: "第4セット（標準難度）",
     desc: "全50問・教則第5版準拠（河川港湾法規・PID制御・フェールセーフ・気象応用）"
+  },
+  5: {
+    badge: "第5回",
+    title: "第5セット（標準難度）",
+    desc: "全50問・教則第5版準拠（航空法規・機体システム・局地気象・CRM網羅）"
+  },
+  6: {
+    badge: "第6回",
+    title: "第6セット（標準難度）",
+    desc: "全50問・教則第5版準拠（航空法深層・VRS・気圧傾度・リスクアセスメント）"
   }
 };
 
 function getSetQuestions(setId) {
+  if (setId === 6 && typeof questionsSet6 !== "undefined") {
+    return questionsSet6;
+  }
+  if (setId === 5 && typeof questionsSet5 !== "undefined") {
+    return questionsSet5;
+  }
   if (setId === 4 && typeof questionsSet4 !== "undefined") {
     return questionsSet4;
   }
@@ -36,7 +52,7 @@ function getSetQuestions(setId) {
   if (setId === 2 && typeof questionsSet2 !== "undefined") {
     return questionsSet2;
   }
-  return typeof questionsSet1 !== "undefined" ? questionsSet1 : questionsData;
+  return typeof questionsSet1 !== "undefined" ? questionsSet1 : [];
 }
 
 // activeQuestions contains the array of questions currently being worked on (all 50 or filtered mistakes)
@@ -155,7 +171,10 @@ function handleTimeUp() {
 }
 
 // Initialize
-function initApp(questionsList = questionsData, startNewTimer = true) {
+function initApp(questionsList, startNewTimer = true) {
+  if (!questionsList) {
+    questionsList = typeof questionsSet1 !== "undefined" ? questionsSet1 : [];
+  }
   activeQuestions = [...questionsList];
   currentIndex = 0;
   totalQText.textContent = activeQuestions.length;
@@ -256,7 +275,8 @@ function renderQuestion(index) {
 function handleSelectOption(qId, selectedOptionIdx) {
   if (userAnswers[qId]) return; // already answered
 
-  const currentQ = questionsData.find(q => q.id === qId);
+  const currentQ = activeQuestions.find(q => q.id === qId);
+  if (!currentQ) return;
   const isCorrect = (selectedOptionIdx + 1) === currentQ.answer;
 
   userAnswers[qId] = {
