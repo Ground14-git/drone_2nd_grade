@@ -1,6 +1,10 @@
 // App State
-// Active question set selection (1: 第1セット簡単, 2: 第2セット標準, 3: 第3セット標準)
+// Active question set selection (1: 第1セット簡単, 2: 第2セット標準, ...)
 let selectedSetId = 1;
+// Exam Mode: "real" (本番モード: 正誤非表示・一括採点・保留あり) or "practice" (練習モード: 1問ごと即時判定)
+let currentExamMode = "real";
+// Examination review state: true after real exam grading is completed, enables reviewing explanations
+let isRealExamGraded = false;
 
 // Set metadata dictionary for preview info
 const setMetaInfo = {
@@ -37,30 +41,30 @@ const setMetaInfo = {
 };
 
 function getSetQuestions(setId) {
-  if (setId === 6 && typeof questionsSet6 !== "undefined") {
-    return questionsSet6;
-  }
-  if (setId === 5 && typeof questionsSet5 !== "undefined") {
-    return questionsSet5;
-  }
-  if (setId === 4 && typeof questionsSet4 !== "undefined") {
-    return questionsSet4;
-  }
-  if (setId === 3 && typeof questionsSet3 !== "undefined") {
-    return questionsSet3;
-  }
-  if (setId === 2 && typeof questionsSet2 !== "undefined") {
-    return questionsSet2;
-  }
+  if (setId === 6 && typeof questionsSet6 !== "undefined") return questionsSet6;
+  if (setId === 5 && typeof questionsSet5 !== "undefined") return questionsSet5;
+  if (setId === 4 && typeof questionsSet4 !== "undefined") return questionsSet4;
+  if (setId === 3 && typeof questionsSet3 !== "undefined") return questionsSet3;
+  if (setId === 2 && typeof questionsSet2 !== "undefined") return questionsSet2;
   return typeof questionsSet1 !== "undefined" ? questionsSet1 : [];
 }
 
-// activeQuestions contains the array of questions currently being worked on (all 50 or filtered mistakes)
+// activeQuestions contains the array of questions currently being worked on
 let activeQuestions = [...getSetQuestions(selectedSetId)];
 let currentIndex = 0;
+
 // userAnswers map keyed by question id:
 // userAnswers[qId] = { selectedOptionIndex: number, isCorrect: boolean }
 const userAnswers = {};
+
+// flaggedQuestionIds: Set of question IDs marked for later review ("後で見直す")
+const flaggedQuestionIds = new Set();
+// isReviewingFlaggedOnly: true when user clicks "「後で見直す」問題を順に表示する"
+let isReviewingFlaggedOnly = false;
+// isRetryingMistakes: true when user clicks "間違えた問題を解き直す"
+let isRetryingMistakes = false;
+// isReviewingAll: true when user clicks "全問題の解説と解答を見る" after grading
+let isReviewingAll = false;
 
 // History of all questions ever answered wrong across sessions (Set of question ids)
 const everWrongQuestionIds = new Set();
@@ -78,6 +82,7 @@ const totalQText = document.getElementById("total-q");
 const progressFill = document.getElementById("progress-fill");
 const wrongCountBadge = document.getElementById("wrong-count");
 const correctCountBadge = document.getElementById("correct-count");
+const scoreBadges = document.querySelector(".score-badges");
 
 const timerBadge = document.getElementById("timer-badge");
 const timerDisplay = document.getElementById("timer-display");
@@ -89,17 +94,47 @@ const startView = document.getElementById("start-view");
 const btnStartExam = document.getElementById("btn-start-exam");
 const quizView = document.getElementById("quiz-view");
 const resultView = document.getElementById("result-view");
+const appHeader = document.querySelector(".app-header");
 const appFooter = document.querySelector(".app-footer");
 
 const qNumDisplay = document.getElementById("q-num");
 const qBodyDisplay = document.getElementById("q-body");
 const optionsContainer = document.getElementById("options-container");
+const btnBookmark = document.getElementById("btn-bookmark");
 
 const btnPrev = document.getElementById("btn-prev");
 const btnNext = document.getElementById("btn-next");
+const btnGradeFooter = document.getElementById("btn-grade-footer");
+const btnOpenStatus = document.getElementById("btn-open-status");
+
 const btnRestart = document.getElementById("btn-restart");
 const btnRetryMistakes = document.getElementById("btn-retry-mistakes");
+const btnReviewAll = document.getElementById("btn-review-all");
 const btnClose = document.getElementById("btn-close");
+
+// Status Modal Elements
+const statusModal = document.getElementById("status-modal");
+const btnCloseStatus = document.getElementById("btn-close-status");
+const btnBackToQuiz = document.getElementById("btn-back-to-quiz");
+const btnModalGrade = document.getElementById("btn-modal-grade");
+const statAnsweredCount = document.getElementById("stat-answered-count");
+const statUnansweredCount = document.getElementById("stat-unanswered-count");
+const statFlaggedCount = document.getElementById("stat-flagged-count");
+const questionGrid = document.getElementById("question-grid");
+const statusQuickAction = document.getElementById("status-quick-action");
+const btnJumpNextFlagged = document.getElementById("btn-jump-next-flagged");
+
+// Confirm Grade Modal Elements
+const confirmGradeModal = document.getElementById("confirm-grade-modal");
+const confirmGradeTitle = document.getElementById("confirm-grade-title");
+const confirmGradeDesc = document.getElementById("confirm-grade-desc");
+const btnDoGrade = document.getElementById("btn-do-grade");
+const btnCancelGrade = document.getElementById("btn-cancel-grade");
+
+// Mode Tabs
+const tabModeReal = document.getElementById("tab-mode-real");
+const tabModePractice = document.getElementById("tab-mode-practice");
+const startNoticeDesc = document.getElementById("start-notice-desc");
 
 const letters = ["A", "B", "C", "D"];
 
@@ -150,11 +185,9 @@ function updateTimerUI() {
 
   if (timerBadge) {
     if (remainingSeconds <= 300 && remainingSeconds > 60) {
-      // 5分以下：注意色（黄色）
       timerBadge.classList.add("warning");
       timerBadge.classList.remove("danger");
     } else if (remainingSeconds <= 60) {
-      // 1分以下：警告色（赤＆パルスアニメーション）
       timerBadge.classList.remove("warning");
       timerBadge.classList.add("danger");
     } else {
@@ -164,13 +197,35 @@ function updateTimerUI() {
 }
 
 function handleTimeUp() {
-  // Show popup modal notification
   if (timeupModal) {
     timeupModal.classList.add("active");
   }
 }
 
-// Initialize
+// Mode Selection Initialization
+function setupModeSelection() {
+  if (tabModeReal && tabModePractice) {
+    tabModeReal.addEventListener("click", () => {
+      currentExamMode = "real";
+      tabModeReal.classList.add("active");
+      tabModePractice.classList.remove("active");
+      if (startNoticeDesc) {
+        startNoticeDesc.innerHTML = `<p>「試験をスタートする」を押すと、全50問の試験が開始されます。<br>本番モードでは正誤は解答中に表示されず、制限時間内に回答状況を確認・見直ししながら全問解いて最後に「採点」を行います。</p>`;
+      }
+    });
+
+    tabModePractice.addEventListener("click", () => {
+      currentExamMode = "practice";
+      tabModePractice.classList.add("active");
+      tabModeReal.classList.remove("active");
+      if (startNoticeDesc) {
+        startNoticeDesc.innerHTML = `<p>「試験をスタートする」を押すと、全50問の練習が開始されます。<br>練習モードでは1問選択するごとに、即座に正誤判定と詳しい解説が表示されます。</p>`;
+      }
+    });
+  }
+}
+
+// Initialize Application
 function initApp(questionsList, startNewTimer = true) {
   if (!questionsList) {
     questionsList = typeof questionsSet1 !== "undefined" ? questionsSet1 : [];
@@ -184,6 +239,22 @@ function initApp(questionsList, startNewTimer = true) {
     startTimer();
   }
 
+  // Header UI adjustments depending on mode
+  if (currentExamMode === "real") {
+    if (!isRealExamGraded) {
+      if (scoreBadges) scoreBadges.style.display = "none";
+    } else {
+      if (scoreBadges) scoreBadges.style.display = "flex";
+    }
+    if (btnBookmark) btnBookmark.style.display = "inline-flex";
+    if (btnOpenStatus) btnOpenStatus.style.display = "inline-flex";
+  } else {
+    // 練習モード：即時正誤判定バッジを表示し、見直す・回答状況ボタンは非表示
+    if (scoreBadges) scoreBadges.style.display = "flex";
+    if (btnBookmark) btnBookmark.style.display = "none";
+    if (btnOpenStatus) btnOpenStatus.style.display = "none";
+  }
+
   renderQuestion(currentIndex);
   updateScoreAndProgress();
 }
@@ -194,86 +265,156 @@ function renderQuestion(index) {
 
   const currentQ = activeQuestions[index];
   qIndexText.textContent = index + 1;
-  // Display original question ID or sequence number
   qNumDisplay.textContent = `問題${currentQ.id}`;
   qBodyDisplay.textContent = currentQ.question;
 
+  // Update Bookmark (後で見直す) Button State
+  if (btnBookmark) {
+    const isFlagged = flaggedQuestionIds.has(currentQ.id);
+    if (isFlagged) {
+      btnBookmark.classList.add("flagged");
+      btnBookmark.querySelector(".bookmark-label").textContent = "見直す設定中";
+    } else {
+      btnBookmark.classList.remove("flagged");
+      btnBookmark.querySelector(".bookmark-label").textContent = "後で見直す";
+    }
+  }
+
   // Clear options
   optionsContainer.innerHTML = "";
-
   const answeredState = userAnswers[currentQ.id];
 
+  // In real mode before grading: do NOT show correct/wrong badges or explanations
+  const isRealModeActive = (currentExamMode === "real" && !isRealExamGraded);
+
   currentQ.options.forEach((optText, i) => {
-    const optNumber = i + 1; // 1-based answer matches currentQ.answer
+    const optNumber = i + 1;
     const isThisCorrect = optNumber === currentQ.answer;
 
     const optEl = document.createElement("div");
     optEl.className = "option-item";
     optEl.dataset.index = i;
 
-    // Header badge content for option
-    let statusBadgeHtml = "";
-    if (isThisCorrect) {
-      statusBadgeHtml = `
-        <span class="opt-status-badge is-correct">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-          答え
-        </span>
-      `;
-    } else {
-      statusBadgeHtml = `
-        <span class="opt-status-badge is-wrong">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-          不正解
-        </span>
-      `;
-    }
-
-    optEl.innerHTML = `
-      <div class="option-main">
-        <div class="option-left">
-          <span class="opt-char">${letters[i]}.</span>
-          <span class="opt-text">
-            ${optText}
-            <span class="user-tag">（あなたの解答）</span>
-          </span>
+    if (isRealModeActive) {
+      // Real exam mode: Clean display, only show selected state
+      optEl.innerHTML = `
+        <div class="option-main">
+          <div class="option-left">
+            <span class="opt-char">${letters[i]}.</span>
+            <span class="opt-text">${optText}</span>
+          </div>
         </div>
-        ${statusBadgeHtml}
-      </div>
-      <div class="option-explanation">${currentQ.explanation}</div>
-    `;
+      `;
 
-    // Apply state if already answered
-    if (answeredState) {
-      optEl.classList.add("locked");
-      if (isThisCorrect) {
-        optEl.classList.add("correct-choice", "show-explanation");
-      } else if (answeredState.selectedOptionIndex === i) {
-        optEl.classList.add("wrong-choice");
+      if (answeredState && answeredState.selectedOptionIndex === i) {
+        optEl.classList.add("real-selected");
       }
+
+      // Allow answering or changing answer freely in real exam
+      optEl.addEventListener("click", () => handleSelectOptionRealMode(currentQ.id, i));
+
     } else {
-      // Add click handler
-      optEl.addEventListener("click", () => handleSelectOption(currentQ.id, i));
+      // Practice mode or Real mode after grading: Full explanation and badges
+      let statusBadgeHtml = "";
+      if (isThisCorrect) {
+        statusBadgeHtml = `
+          <span class="opt-status-badge is-correct">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            答え
+          </span>
+        `;
+      } else {
+        statusBadgeHtml = `
+          <span class="opt-status-badge is-wrong">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            不正解
+          </span>
+        `;
+      }
+
+      optEl.innerHTML = `
+        <div class="option-main">
+          <div class="option-left">
+            <span class="opt-char">${letters[i]}.</span>
+            <span class="opt-text">
+              ${optText}
+              <span class="user-tag">（あなたの解答）</span>
+            </span>
+          </div>
+          ${statusBadgeHtml}
+        </div>
+        <div class="option-explanation">${currentQ.explanation}</div>
+      `;
+
+      if (answeredState) {
+        optEl.classList.add("locked");
+        if (isThisCorrect) {
+          optEl.classList.add("correct-choice", "show-explanation");
+        } else if (answeredState.selectedOptionIndex === i) {
+          optEl.classList.add("wrong-choice");
+        }
+      } else {
+        optEl.addEventListener("click", () => handleSelectOptionPracticeMode(currentQ.id, i));
+      }
     }
 
     optionsContainer.appendChild(optEl);
   });
 
   // Update navigation buttons
-  btnPrev.disabled = index === 0;
-  if (index === activeQuestions.length - 1) {
-    btnNext.textContent = "結果を見る";
+  if (isRetryingMistakes || isReviewingAll) {
+    btnPrev.disabled = index === 0;
+    btnGradeFooter.style.display = "none";
+    btnNext.style.display = "inline-flex";
+    if (index === activeQuestions.length - 1) {
+      btnNext.textContent = "トップメニューに戻る";
+    } else {
+      btnNext.textContent = "次へ";
+    }
+  } else if (isReviewingFlaggedOnly) {
+    // Sequential navigation exclusively through flagged questions
+    const flaggedIndices = [];
+    activeQuestions.forEach((q, i) => {
+      if (flaggedQuestionIds.has(q.id)) flaggedIndices.push(i);
+    });
+    const currentPosInFlagged = flaggedIndices.indexOf(index);
+
+    btnPrev.disabled = currentPosInFlagged <= 0;
+    if (currentPosInFlagged === flaggedIndices.length - 1) {
+      btnNext.textContent = "採点へ進む";
+    } else {
+      btnNext.textContent = "次の見直し問題へ";
+    }
+    btnNext.style.display = "inline-flex";
+    btnGradeFooter.style.display = "none";
+  } else if (isRealModeActive) {
+    btnPrev.disabled = index === 0;
+    if (index === activeQuestions.length - 1) {
+      btnNext.style.display = "none";
+      btnGradeFooter.style.display = "inline-flex";
+    } else {
+      btnNext.style.display = "inline-flex";
+      btnNext.textContent = "次へ";
+      btnGradeFooter.style.display = "none";
+    }
   } else {
-    btnNext.textContent = "次へ";
+    btnPrev.disabled = index === 0;
+    btnGradeFooter.style.display = "none";
+    btnNext.style.display = "inline-flex";
+    if (index === activeQuestions.length - 1) {
+      btnNext.textContent = "結果を見る";
+    } else {
+      btnNext.textContent = "次へ";
+    }
   }
 
   // Scroll to top of content
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-// Option selection handler
-function handleSelectOption(qId, selectedOptionIdx) {
-  if (userAnswers[qId]) return; // already answered
+// Option selection handler for Practice Mode (Instant validation)
+function handleSelectOptionPracticeMode(qId, selectedOptionIdx) {
+  if (userAnswers[qId]) return;
 
   const currentQ = activeQuestions.find(q => q.id === qId);
   if (!currentQ) return;
@@ -292,7 +433,36 @@ function handleSelectOption(qId, selectedOptionIdx) {
   renderQuestion(currentIndex);
 }
 
-// Update Score and Progress Bar for current active set
+// Option selection handler for Real Mode (Silent, allows changing selection)
+function handleSelectOptionRealMode(qId, selectedOptionIdx) {
+  const currentQ = activeQuestions.find(q => q.id === qId);
+  if (!currentQ) return;
+  const isCorrect = (selectedOptionIdx + 1) === currentQ.answer;
+
+  userAnswers[qId] = {
+    selectedOptionIndex: selectedOptionIdx,
+    isCorrect: isCorrect
+  };
+
+  updateScoreAndProgress();
+  renderQuestion(currentIndex);
+}
+
+// Bookmark (後で見直す) Toggle Handler
+if (btnBookmark) {
+  btnBookmark.addEventListener("click", () => {
+    if (!activeQuestions || activeQuestions.length === 0) return;
+    const currentQ = activeQuestions[currentIndex];
+    if (flaggedQuestionIds.has(currentQ.id)) {
+      flaggedQuestionIds.delete(currentQ.id);
+    } else {
+      flaggedQuestionIds.add(currentQ.id);
+    }
+    renderQuestion(currentIndex);
+  });
+}
+
+// Update Score and Progress Bar
 function updateScoreAndProgress() {
   let correctCount = 0;
   let wrongCount = 0;
@@ -308,15 +478,44 @@ function updateScoreAndProgress() {
   correctCountBadge.textContent = correctCount;
   wrongCountBadge.textContent = wrongCount;
 
-  const progressPercent = activeQuestions.length > 0 
-    ? ((currentIndex + 1) / activeQuestions.length) * 100 
-    : 0;
+  // Progress Bar calculation:
+  // 練習モード（および採点後の解説見直し）: 現在開いている問題位置（1/50, 2/50...）に応じて進捗バーを伸ばす
+  // 本番モード（採点前）: 50問中「回答済み」になった問題数に応じて進捗バーを伸ばす
+  const total = activeQuestions.length;
+  let progressPercent = 0;
+
+  if (currentExamMode === "real" && !isRealExamGraded) {
+    let answeredCount = 0;
+    activeQuestions.forEach(q => {
+      if (userAnswers[q.id] !== undefined) answeredCount++;
+    });
+    progressPercent = total > 0 ? (answeredCount / total) * 100 : 0;
+  } else {
+    // 練習モード：回答の有無にかかわらず、次の問題に進んだら 1/50, 2/50... に応じて進む
+    progressPercent = total > 0 ? ((currentIndex + 1) / total) * 100 : 0;
+  }
+
   progressFill.style.width = `${progressPercent}%`;
-  totalQText.textContent = activeQuestions.length;
+  qIndexText.textContent = currentIndex + 1;
+  totalQText.textContent = total;
 }
 
 // Navigation Events
 btnPrev.addEventListener("click", () => {
+  if (isReviewingFlaggedOnly) {
+    const flaggedIndices = [];
+    activeQuestions.forEach((q, i) => {
+      if (flaggedQuestionIds.has(q.id)) flaggedIndices.push(i);
+    });
+    const currentPos = flaggedIndices.indexOf(currentIndex);
+    if (currentPos > 0) {
+      currentIndex = flaggedIndices[currentPos - 1];
+      renderQuestion(currentIndex);
+      updateScoreAndProgress();
+    }
+    return;
+  }
+
   if (currentIndex > 0) {
     currentIndex--;
     renderQuestion(currentIndex);
@@ -325,24 +524,215 @@ btnPrev.addEventListener("click", () => {
 });
 
 btnNext.addEventListener("click", () => {
+  if (isRetryingMistakes || isReviewingAll) {
+    if (currentIndex < activeQuestions.length - 1) {
+      currentIndex++;
+      renderQuestion(currentIndex);
+      updateScoreAndProgress();
+    } else {
+      // Finished all questions in review/retry mode -> return to top menu
+      isRetryingMistakes = false;
+      isReviewingAll = false;
+      executeWithTransition(() => {
+        showStartScreen();
+      });
+    }
+    return;
+  }
+
+  if (isReviewingFlaggedOnly) {
+    const flaggedIndices = [];
+    activeQuestions.forEach((q, i) => {
+      if (flaggedQuestionIds.has(q.id)) flaggedIndices.push(i);
+    });
+    const currentPos = flaggedIndices.indexOf(currentIndex);
+
+    if (currentPos >= 0 && currentPos < flaggedIndices.length - 1) {
+      // Advance to next flagged question
+      currentIndex = flaggedIndices[currentPos + 1];
+      renderQuestion(currentIndex);
+      updateScoreAndProgress();
+    } else {
+      // Reached the end of flagged questions -> open grade confirmation
+      requestGradeExam();
+    }
+    return;
+  }
+
   if (currentIndex < activeQuestions.length - 1) {
     currentIndex++;
     renderQuestion(currentIndex);
     updateScoreAndProgress();
   } else {
-    showResultScreen();
+    if (currentExamMode === "real" && !isRealExamGraded) {
+      requestGradeExam();
+    } else {
+      showResultScreen();
+    }
   }
 });
+
+if (btnGradeFooter) {
+  btnGradeFooter.addEventListener("click", () => {
+    requestGradeExam();
+  });
+}
+
+// Request Exam Grading (with confirmation dialog)
+function requestGradeExam() {
+  const total = activeQuestions.length;
+  let answeredCount = 0;
+  activeQuestions.forEach(q => {
+    if (userAnswers[q.id] !== undefined) answeredCount++;
+  });
+  const unansweredCount = total - answeredCount;
+
+  if (unansweredCount > 0) {
+    confirmGradeTitle.textContent = `未回答の問題が ${unansweredCount} 問あります`;
+    confirmGradeDesc.innerHTML = `全50問中、${answeredCount}問に解答済みです。<br>このまま採点を開始してもよろしいですか？<br>（採点後は解答の変更ができません）`;
+  } else {
+    confirmGradeTitle.textContent = "全問の解答が完了しました！";
+    confirmGradeDesc.innerHTML = `全50問すべて解答済みです。<br>採点を実行して合否判定を確認しますか？`;
+  }
+
+  if (statusModal) statusModal.classList.remove("active");
+  if (confirmGradeModal) confirmGradeModal.classList.add("active");
+}
+
+if (btnCancelGrade) {
+  btnCancelGrade.addEventListener("click", () => {
+    if (confirmGradeModal) confirmGradeModal.classList.remove("active");
+  });
+}
+
+if (btnDoGrade) {
+  btnDoGrade.addEventListener("click", () => {
+    if (confirmGradeModal) confirmGradeModal.classList.remove("active");
+    isRealExamGraded = true;
+    showResultScreen();
+  });
+}
+
+// Answer Status Modal Handlers
+function openStatusModal() {
+  updateStatusSummaryAndGrid();
+  if (statusModal) statusModal.classList.add("active");
+}
+
+function closeStatusModal() {
+  if (statusModal) statusModal.classList.remove("active");
+}
+
+function updateStatusSummaryAndGrid() {
+  const total = activeQuestions.length;
+  let answeredCount = 0;
+  let flaggedCount = 0;
+
+  activeQuestions.forEach(q => {
+    if (userAnswers[q.id] !== undefined) answeredCount++;
+    if (flaggedQuestionIds.has(q.id)) flaggedCount++;
+  });
+
+  const unansweredCount = total - answeredCount;
+
+  if (statAnsweredCount) statAnsweredCount.textContent = answeredCount;
+  if (statUnansweredCount) statUnansweredCount.textContent = unansweredCount;
+  if (statFlaggedCount) statFlaggedCount.textContent = flaggedCount;
+
+  // Show/Hide Quick Jump Button for Flagged Questions
+  if (statusQuickAction) {
+    if (flaggedCount > 0) {
+      statusQuickAction.style.display = "block";
+    } else {
+      statusQuickAction.style.display = "none";
+    }
+  }
+
+  renderStatusGrid();
+}
+
+function renderStatusGrid() {
+  if (!questionGrid) return;
+  questionGrid.innerHTML = "";
+
+  activeQuestions.forEach((q, idx) => {
+    const isAnswered = userAnswers[q.id] !== undefined;
+    const isFlagged = flaggedQuestionIds.has(q.id);
+    const isCurrent = idx === currentIndex;
+
+    const rowCard = document.createElement("div");
+    rowCard.className = "q-row-card";
+    if (isCurrent) rowCard.classList.add("current");
+
+    // Short snippet of question text for quick recognition
+    const shortSnippet = q.question.replace(/\s+/g, " ").trim();
+
+    rowCard.innerHTML = `
+      <div class="q-row-left">
+        <span class="q-row-num-badge">Q${idx + 1}.</span>
+        <span class="q-row-snippet">${shortSnippet}</span>
+      </div>
+      <div class="q-row-right">
+        ${isFlagged ? '<span class="q-row-flag-badge">⭐ 見直す</span>' : ''}
+        <span class="q-row-status-tag ${isAnswered ? 'is-answered' : 'is-unanswered'}">
+          ${isAnswered ? '回答済' : '未回答'}
+        </span>
+      </div>
+    `;
+
+    rowCard.addEventListener("click", () => {
+      isReviewingFlaggedOnly = false; // direct pick returns to full browsing from that question
+      currentIndex = idx;
+      renderQuestion(currentIndex);
+      updateScoreAndProgress();
+      closeStatusModal();
+    });
+
+    questionGrid.appendChild(rowCard);
+  });
+}
+
+// Sequential Flagged Review: Starts at the lowest numbered flagged question and navigates through them
+if (btnJumpNextFlagged) {
+  btnJumpNextFlagged.addEventListener("click", () => {
+    const flaggedIndices = [];
+    activeQuestions.forEach((q, idx) => {
+      if (flaggedQuestionIds.has(q.id)) {
+        flaggedIndices.push(idx);
+      }
+    });
+
+    if (flaggedIndices.length === 0) return;
+
+    // Start with the lowest numbered flagged question
+    isReviewingFlaggedOnly = true;
+    currentIndex = flaggedIndices[0];
+    renderQuestion(currentIndex);
+    updateScoreAndProgress();
+    closeStatusModal();
+  });
+}
+
+if (btnOpenStatus) btnOpenStatus.addEventListener("click", openStatusModal);
+if (btnCloseStatus) btnCloseStatus.addEventListener("click", closeStatusModal);
+if (btnBackToQuiz) btnBackToQuiz.addEventListener("click", closeStatusModal);
+if (btnModalGrade) {
+  btnModalGrade.addEventListener("click", () => {
+    closeStatusModal();
+    requestGradeExam();
+  });
+}
 
 // Show Result Screen
 function showResultScreen() {
   stopTimer();
-  if (timeupModal) {
-    timeupModal.classList.remove("active");
-  }
+  if (timeupModal) timeupModal.classList.remove("active");
+  if (statusModal) statusModal.classList.remove("active");
+  if (confirmGradeModal) confirmGradeModal.classList.remove("active");
 
   quizView.style.display = "none";
-  document.querySelector(".app-footer").style.display = "none";
+  if (appHeader) appHeader.style.display = "none";
+  if (appFooter) appFooter.style.display = "none";
   resultView.style.display = "block";
 
   let correctCount = 0;
@@ -360,27 +750,23 @@ function showResultScreen() {
   const scorePercent = total > 0 ? Math.round((correctCount / total) * 100) : 0;
   const isPassed = scorePercent >= 80;
 
-  const scoreDisplay = document.getElementById("result-score");
-  const descDisplay = document.getElementById("result-desc");
-  const titleDisplay = document.getElementById("result-title");
-
-  // Format time taken
-  const timeUsedSeconds = EXAM_DURATION_SECONDS - remainingSeconds;
-  const usedMins = Math.floor(timeUsedSeconds / 60);
-  const usedSecs = timeUsedSeconds % 60;
-  const timeTakenStr = `${usedMins}分${usedSecs}秒`;
-
-  scoreDisplay.textContent = `${correctCount} / ${total}問 (${scorePercent}%)`;
-  titleDisplay.textContent = isPassed ? "合格基準達成！ 🎉" : "お疲れ様でした！";
-  descDisplay.innerHTML = isPassed
-    ? `おめでとうございます！所要時間 <strong>${timeTakenStr}</strong> で合格ライン（80%以上）をクリアしました。<br>本番に向けてさらに理解を深めましょう。`
-    : `所要時間: <strong>${timeTakenStr}</strong>（基準時間30分）<br>正答率80%以上が合格基準の目安です。<br>間違えた問題を中心に復習を繰り返しましょう！`;
-
   // Find questions that were answered incorrectly in this current session
   const wrongQuestions = activeQuestions.filter(q => {
     const ans = userAnswers[q.id];
     return ans && !ans.isCorrect;
   });
+
+  // Drumroll and reveal animation elements
+  const scoreDisplay = document.getElementById("result-score");
+  const descDisplay = document.getElementById("result-desc");
+  const titleDisplay = document.getElementById("result-title");
+  const badgeAnim = document.getElementById("result-badge-anim");
+  const resultButtons = document.getElementById("result-buttons");
+
+  if (resultButtons) {
+    resultButtons.style.opacity = "0";
+    resultButtons.style.pointerEvents = "none";
+  }
 
   if (wrongQuestions.length > 0) {
     btnRetryMistakes.style.display = "block";
@@ -388,12 +774,163 @@ function showResultScreen() {
   } else {
     btnRetryMistakes.style.display = "none";
   }
+
+  if (btnReviewAll) {
+    if (currentExamMode === "real") {
+      btnReviewAll.style.display = "block";
+    } else {
+      btnReviewAll.style.display = "none";
+    }
+  }
+
+  // Format time taken
+  const timeUsedSeconds = EXAM_DURATION_SECONDS - remainingSeconds;
+  const usedMins = Math.floor(timeUsedSeconds / 60);
+  const usedSecs = timeUsedSeconds % 60;
+  const timeTakenStr = `${usedMins}分${usedSecs}秒`;
+
+  // Start Drumroll Animation (only in real mode or if desired)
+  if (currentExamMode === "real") {
+    titleDisplay.textContent = "運命の採点中... 🥁";
+    if (badgeAnim) {
+      badgeAnim.className = "result-badge-anim";
+      badgeAnim.textContent = "採点集計中";
+    }
+    descDisplay.textContent = "あなたの解答を照合しています...";
+    scoreDisplay.className = "result-score roll-active";
+
+    let rollCounter = 0;
+    const rollDuration = 2200; // 2.2 seconds drumroll
+    const rollInterval = 45;
+    const rollTimer = setInterval(() => {
+      rollCounter++;
+      // Randomly cycle numbers between 1 and 50
+      const randomScore = Math.floor(Math.random() * (total + 1));
+      scoreDisplay.textContent = `${randomScore} / ${total}問`;
+    }, rollInterval);
+
+    setTimeout(() => {
+      clearInterval(rollTimer);
+
+      // Final Reveal!
+      scoreDisplay.className = "result-score final-reveal";
+      scoreDisplay.textContent = `${correctCount} / ${total}問 (${scorePercent}%)`;
+      titleDisplay.textContent = isPassed ? "合格基準達成！ 🎉" : "お疲れ様でした！";
+
+      if (badgeAnim) {
+        if (isPassed) {
+          badgeAnim.className = "result-badge-anim is-passed";
+          badgeAnim.textContent = "合格ラインクリア（80%以上）";
+          // Trigger Confetti!
+          launchConfetti();
+        } else {
+          badgeAnim.className = "result-badge-anim is-failed";
+          badgeAnim.textContent = "不合格（あと少し！）";
+        }
+      }
+
+      descDisplay.innerHTML = isPassed
+        ? `おめでとうございます！所要時間 <strong>${timeTakenStr}</strong> で合格ライン（80%以上/40問正解）をクリアしました。<br>本番に向けてさらに理解を深めましょう。`
+        : `所要時間: <strong>${timeTakenStr}</strong>（基準時間30分）<br>正答率80%以上（40問以上）が合格基準の目安です。<br>間違えた問題を中心に復習を繰り返しましょう！`;
+
+      // Fade in buttons
+      if (resultButtons) {
+        resultButtons.style.opacity = "1";
+        resultButtons.style.pointerEvents = "auto";
+      }
+    }, rollDuration);
+
+  } else {
+    // Practice mode instant display
+    scoreDisplay.className = "result-score";
+    scoreDisplay.textContent = `${correctCount} / ${total}問 (${scorePercent}%)`;
+    titleDisplay.textContent = isPassed ? "合格基準達成！ 🎉" : "お疲れ様でした！";
+    if (badgeAnim) {
+      badgeAnim.className = isPassed ? "result-badge-anim is-passed" : "result-badge-anim is-failed";
+      badgeAnim.textContent = isPassed ? "合格ラインクリア（80%以上）" : "演習完了";
+    }
+    descDisplay.innerHTML = isPassed
+      ? `おめでとうございます！全問演習を完了し、合格基準（80%以上）を達成しました！`
+      : `演習完了！正答率80%以上が合格の目安です。<br>間違えた問題を中心に解き直しましょう。`;
+
+    if (resultButtons) {
+      resultButtons.style.opacity = "1";
+      resultButtons.style.pointerEvents = "auto";
+    }
+    if (isPassed) launchConfetti();
+  }
 }
 
-// Modal Event Listeners
+// Confetti Particle System
+function launchConfetti() {
+  const canvas = document.getElementById("confetti-canvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const card = document.getElementById("result-card");
+  if (!card) return;
+
+  canvas.width = card.offsetWidth;
+  canvas.height = card.offsetHeight;
+
+  const confettiPieces = [];
+  const colors = ["#f59e0b", "#38bdf8", "#22c55e", "#ec4899", "#8b5cf6", "#ef4444", "#fbbf24"];
+
+  for (let i = 0; i < 75; i++) {
+    confettiPieces.push({
+      x: canvas.width / 2 + (Math.random() - 0.5) * 60,
+      y: canvas.height * 0.45,
+      w: Math.random() * 8 + 4,
+      h: Math.random() * 6 + 4,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      vx: (Math.random() - 0.5) * 14,
+      vy: (Math.random() - 0.9) * 14 - 3,
+      rotation: Math.random() * 360,
+      vRotation: (Math.random() - 0.5) * 12,
+      gravity: 0.38,
+      opacity: 1
+    });
+  }
+
+  let animationFrame;
+  function updateConfetti() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let aliveCount = 0;
+
+    confettiPieces.forEach(p => {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += p.gravity;
+      p.rotation += p.vRotation;
+      p.opacity -= 0.012;
+
+      if (p.opacity > 0 && p.y < canvas.height + 20) {
+        aliveCount++;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate((p.rotation * Math.PI) / 180);
+        ctx.globalAlpha = Math.max(0, p.opacity);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      }
+    });
+
+    if (aliveCount > 0) {
+      animationFrame = requestAnimationFrame(updateConfetti);
+    } else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      cancelAnimationFrame(animationFrame);
+    }
+  }
+
+  updateConfetti();
+}
+
+// Modal Event Listeners (Time Up)
 if (btnTimeupResult) {
   btnTimeupResult.addEventListener("click", () => {
     timeupModal.classList.remove("active");
+    isRealExamGraded = true;
     showResultScreen();
   });
 }
@@ -409,12 +946,15 @@ function showStartScreen() {
   stopTimer();
   resetTimer();
   for (let key in userAnswers) delete userAnswers[key];
+  flaggedQuestionIds.clear();
   everWrongQuestionIds.clear();
+  isRealExamGraded = false;
+  isReviewingFlaggedOnly = false;
+  isRetryingMistakes = false;
+  isReviewingAll = false;
 
   const shutterCurtain = document.getElementById("shutter-curtain");
-  if (shutterCurtain) {
-    shutterCurtain.classList.remove("wipe-cut");
-  }
+  if (shutterCurtain) shutterCurtain.classList.remove("wipe-cut");
 
   if (startView) {
     startView.classList.remove("transition-out");
@@ -425,8 +965,28 @@ function showStartScreen() {
     quizView.style.display = "none";
   }
   if (resultView) resultView.style.display = "none";
+  if (appHeader) appHeader.style.display = "none";
   if (appFooter) appFooter.style.display = "none";
   if (timeupModal) timeupModal.classList.remove("active");
+  if (statusModal) statusModal.classList.remove("active");
+  if (confirmGradeModal) confirmGradeModal.classList.remove("active");
+
+  // Synchronize Tab UI to currentExamMode so start screen matches state
+  if (tabModeReal && tabModePractice) {
+    if (currentExamMode === "real") {
+      tabModeReal.classList.add("active");
+      tabModePractice.classList.remove("active");
+      if (startNoticeDesc) {
+        startNoticeDesc.innerHTML = `<p>「試験をスタートする」を押すと、全50問の試験が開始されます。<br>本番モードでは正誤は解答中に表示されず、制限時間内に回答状況を確認・見直ししながら全問解いて最後に「採点」を行います。</p>`;
+      }
+    } else {
+      tabModePractice.classList.add("active");
+      tabModeReal.classList.remove("active");
+      if (startNoticeDesc) {
+        startNoticeDesc.innerHTML = `<p>「試験をスタートする」を押すと、全50問の練習が開始されます。<br>練習モードでは1問選択するごとに、即座に正誤判定と詳しい解説が表示されます。</p>`;
+      }
+    }
+  }
 
   activeQuestions = [...getSetQuestions(selectedSetId)];
   currentIndex = 0;
@@ -434,7 +994,7 @@ function showStartScreen() {
   updateScoreAndProgress();
 }
 
-// Smooth Screen Transition Helper (Upward shutter cut)
+// Smooth Screen Transition Helper
 let isTransitioning = false;
 function executeWithTransition(onPeakCallback) {
   if (isTransitioning) return;
@@ -442,7 +1002,6 @@ function executeWithTransition(onPeakCallback) {
 
   const shutterCurtain = document.getElementById("shutter-curtain");
 
-  // Add transition-out to currently visible containers
   if (startView && startView.style.display !== "none") {
     startView.classList.add("transition-out");
   }
@@ -450,14 +1009,12 @@ function executeWithTransition(onPeakCallback) {
     resultView.classList.add("transition-out");
   }
 
-  // Trigger upward shutter wipe
   if (shutterCurtain) {
     shutterCurtain.classList.remove("wipe-cut");
-    void shutterCurtain.offsetWidth; // Force reflow
+    void shutterCurtain.offsetWidth;
     shutterCurtain.classList.add("wipe-cut");
   }
 
-  // Execute screen switch and data init right as shutter reaches top coverage (280ms)
   setTimeout(() => {
     if (startView) startView.classList.remove("transition-out");
     if (resultView) resultView.classList.remove("transition-out");
@@ -486,7 +1043,6 @@ function setupSetSelection() {
   }
 
   if (setDropdown) {
-    // Sync initial state
     setDropdown.value = String(selectedSetId);
     updateSetPreview(selectedSetId);
 
@@ -497,19 +1053,47 @@ function setupSetSelection() {
   }
 }
 
-// Start Exam Button Click Handler with cool upward wipe transition
+// Start Exam Button Click Handler
 if (btnStartExam) {
   btnStartExam.addEventListener("click", () => {
     executeWithTransition(() => {
       if (startView) startView.style.display = "none";
+      if (appHeader) appHeader.style.display = "block";
       if (quizView) {
         quizView.style.display = "block";
         quizView.classList.add("slide-in-up");
       }
       if (appFooter) appFooter.style.display = "flex";
 
+      isRealExamGraded = false;
       const chosenQuestions = getSetQuestions(selectedSetId);
       initApp(chosenQuestions, true);
+    });
+  });
+}
+
+// Review all 50 questions with detailed explanations after exam
+if (btnReviewAll) {
+  btnReviewAll.addEventListener("click", () => {
+    executeWithTransition(() => {
+      resultView.style.display = "none";
+      if (appHeader) appHeader.style.display = "block";
+      if (quizView) {
+        quizView.style.display = "block";
+        quizView.classList.add("slide-in-up");
+      }
+      if (appFooter) appFooter.style.display = "flex";
+      if (scoreBadges) scoreBadges.style.display = "flex";
+
+      // Keep userAnswers intact, navigate back to question 1 in graded review mode
+      currentIndex = 0;
+      isReviewingFlaggedOnly = false;
+      isRetryingMistakes = false;
+      isReviewingAll = true;
+      if (btnBookmark) btnBookmark.style.display = "none";
+      if (btnOpenStatus) btnOpenStatus.style.display = "none";
+      renderQuestion(currentIndex);
+      updateScoreAndProgress();
     });
   });
 }
@@ -523,7 +1107,6 @@ btnRestart.addEventListener("click", () => {
 
 // Retry ONLY mistaken questions from active set
 btnRetryMistakes.addEventListener("click", () => {
-  // Filter activeQuestions that were incorrect
   const wrongQuestions = activeQuestions.filter(q => {
     const ans = userAnswers[q.id];
     return ans && !ans.isCorrect;
@@ -531,7 +1114,6 @@ btnRetryMistakes.addEventListener("click", () => {
 
   if (wrongQuestions.length === 0) return;
 
-  // Reset the answer status for these mistaken questions so user can answer again fresh
   wrongQuestions.forEach(q => {
     delete userAnswers[q.id];
   });
@@ -539,11 +1121,15 @@ btnRetryMistakes.addEventListener("click", () => {
   executeWithTransition(() => {
     if (startView) startView.style.display = "none";
     resultView.style.display = "none";
+    if (appHeader) appHeader.style.display = "block";
     quizView.style.display = "block";
     quizView.classList.add("slide-in-up");
     if (appFooter) appFooter.style.display = "flex";
 
-    // Re-initialize with ONLY the mistaken questions
+    // When retrying mistakes, operate in practice review mode
+    currentExamMode = "practice";
+    isRetryingMistakes = true;
+    isReviewingFlaggedOnly = false;
     initApp(wrongQuestions, false);
   });
 });
@@ -551,14 +1137,15 @@ btnRetryMistakes.addEventListener("click", () => {
 // Header Reset Button (X mark)
 if (btnClose) {
   btnClose.addEventListener("click", () => {
-    if (confirm("試験を中断して最初の表紙画面に戻りますか？")) {
+    if (confirm("試験を中断してトップページに戻りますか？")) {
       showStartScreen();
     }
   });
 }
 
-// Start app on load - Show Cover Page First
+// Start app on load
 document.addEventListener("DOMContentLoaded", () => {
+  setupModeSelection();
   setupSetSelection();
   showStartScreen();
 });
