@@ -37,10 +37,34 @@ const setMetaInfo = {
     badge: "第6回",
     title: "第6セット（標準難度）",
     desc: "全50問・教則第5版準拠（航空法深層・VRS・気圧傾度・リスクアセスメント）"
+  },
+  7: {
+    badge: "第7回",
+    title: "第7セット（標準難度）",
+    desc: "全50問・教則第5版準拠（総合演習・法規・機体システム・気象・安全運航）"
+  },
+  8: {
+    badge: "特集",
+    title: "【徹底対策】航空法 50問",
+    desc: "全50問・航空法および運航ルール・安全基準の徹底対策問題"
+  },
+  9: {
+    badge: "特集",
+    title: "【徹底対策】機体構造・飛行原理 50問",
+    desc: "全50問・機体構造・飛行原理・各種センサー・バッテリー特性の徹底対策問題"
+  },
+  10: {
+    badge: "特集",
+    title: "【徹底対策】気象・自然現象 50問",
+    desc: "全50問・気象現象・大気の安定度・局地風・視程・バッテリーへの気温影響の徹底対策問題"
   }
 };
 
 function getSetQuestions(setId) {
+  if (setId === 10 && typeof questionsSet10 !== "undefined") return questionsSet10;
+  if (setId === 9 && typeof questionsSet9 !== "undefined") return questionsSet9;
+  if (setId === 8 && typeof questionsSet8 !== "undefined") return questionsSet8;
+  if (setId === 7 && typeof questionsSet7 !== "undefined") return questionsSet7;
   if (setId === 6 && typeof questionsSet6 !== "undefined") return questionsSet6;
   if (setId === 5 && typeof questionsSet5 !== "undefined") return questionsSet5;
   if (setId === 4 && typeof questionsSet4 !== "undefined") return questionsSet4;
