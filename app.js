@@ -59,7 +59,7 @@ const userAnswers = {};
 
 // flaggedQuestionIds: Set of question IDs marked for later review ("後で見直す")
 const flaggedQuestionIds = new Set();
-// isReviewingFlaggedOnly: true when user clicks "「後で見直す」問題を順に表示する"
+// isReviewingFlaggedOnly: true when user clicks "後で見直す問題を順に表示"
 let isReviewingFlaggedOnly = false;
 // isRetryingMistakes: true when user clicks "間違えた問題を解き直す"
 let isRetryingMistakes = false;
@@ -233,7 +233,7 @@ function initApp(questionsList, startNewTimer = true) {
   activeQuestions = [...questionsList];
   currentIndex = 0;
   totalQText.textContent = activeQuestions.length;
-  
+
   if (startNewTimer) {
     resetTimer();
     startTimer();
@@ -373,18 +373,18 @@ function renderQuestion(index) {
     }
   } else if (isReviewingFlaggedOnly) {
     // Sequential navigation exclusively through flagged questions
+    // Use find/some instead of indexOf so that unflagging the current question
+    // doesn't break navigation (indexOf would return -1 after unflagging).
     const flaggedIndices = [];
     activeQuestions.forEach((q, i) => {
       if (flaggedQuestionIds.has(q.id)) flaggedIndices.push(i);
     });
-    const currentPosInFlagged = flaggedIndices.indexOf(index);
 
-    btnPrev.disabled = currentPosInFlagged <= 0;
-    if (currentPosInFlagged === flaggedIndices.length - 1) {
-      btnNext.textContent = "採点へ進む";
-    } else {
-      btnNext.textContent = "次の見直し問題へ";
-    }
+    const hasPrev = flaggedIndices.some(i => i < index);
+    const hasNext = flaggedIndices.some(i => i > index);
+
+    btnPrev.disabled = !hasPrev;
+    btnNext.textContent = hasNext ? "次の見直し問題へ" : "採点へ進む";
     btnNext.style.display = "inline-flex";
     btnGradeFooter.style.display = "none";
   } else if (isRealModeActive) {
@@ -507,9 +507,10 @@ btnPrev.addEventListener("click", () => {
     activeQuestions.forEach((q, i) => {
       if (flaggedQuestionIds.has(q.id)) flaggedIndices.push(i);
     });
-    const currentPos = flaggedIndices.indexOf(currentIndex);
-    if (currentPos > 0) {
-      currentIndex = flaggedIndices[currentPos - 1];
+    // Find the largest flagged index that is strictly before currentIndex
+    const prevFlagged = [...flaggedIndices].reverse().find(i => i < currentIndex);
+    if (prevFlagged !== undefined) {
+      currentIndex = prevFlagged;
       renderQuestion(currentIndex);
       updateScoreAndProgress();
     }
@@ -545,15 +546,16 @@ btnNext.addEventListener("click", () => {
     activeQuestions.forEach((q, i) => {
       if (flaggedQuestionIds.has(q.id)) flaggedIndices.push(i);
     });
-    const currentPos = flaggedIndices.indexOf(currentIndex);
-
-    if (currentPos >= 0 && currentPos < flaggedIndices.length - 1) {
-      // Advance to next flagged question
-      currentIndex = flaggedIndices[currentPos + 1];
+    // Find the smallest flagged index that is strictly after currentIndex.
+    // This works even when the current question was just unflagged (its index
+    // is no longer in flaggedIndices, but we can still skip past it).
+    const nextFlagged = flaggedIndices.find(i => i > currentIndex);
+    if (nextFlagged !== undefined) {
+      currentIndex = nextFlagged;
       renderQuestion(currentIndex);
       updateScoreAndProgress();
     } else {
-      // Reached the end of flagged questions -> open grade confirmation
+      // No more flagged questions ahead -> open grade confirmation
       requestGradeExam();
     }
     return;
@@ -664,14 +666,8 @@ function renderStatusGrid() {
     rowCard.className = "q-row-card";
     if (isCurrent) rowCard.classList.add("current");
 
-    // Short snippet of question text for quick recognition
-    const shortSnippet = q.question.replace(/\s+/g, " ").trim();
-
     rowCard.innerHTML = `
-      <div class="q-row-left">
-        <span class="q-row-num-badge">Q${idx + 1}.</span>
-        <span class="q-row-snippet">${shortSnippet}</span>
-      </div>
+      <span class="q-row-num-badge">Q${idx + 1}.</span>
       <div class="q-row-right">
         ${isFlagged ? '<span class="q-row-flag-badge">⭐ 見直す</span>' : ''}
         <span class="q-row-status-tag ${isAnswered ? 'is-answered' : 'is-unanswered'}">
@@ -681,7 +677,7 @@ function renderStatusGrid() {
     `;
 
     rowCard.addEventListener("click", () => {
-      isReviewingFlaggedOnly = false; // direct pick returns to full browsing from that question
+      isReviewingFlaggedOnly = false;
       currentIndex = idx;
       renderQuestion(currentIndex);
       updateScoreAndProgress();
